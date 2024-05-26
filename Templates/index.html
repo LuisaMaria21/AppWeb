@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reconocedor de Cubiertos</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        h1 {
+            margin-bottom: 30px;
+        }
+        .row {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        .video-container, .output-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            margin: 10px;
+        }
+        #output {
+            margin-top: 20px;
+            font-size: 1.5em;
+            color: #333;
+            width: 100%;
+            text-align: center;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="text-center">
+            <h1>Reconocedor de Cubiertos</h1>
+        </div>
+        <div class="row">
+            <div class="video-container col-md-6">
+                <video id="video" width="640" height="480" autoplay></video>
+            </div>
+            <div class="output-container col-md-4">
+                <div id="output" class="text-center">Predicción: </div>
+                <div id="class-prediction" class="text-center">Clase: </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const socket = io();
+
+        // Manejar mensaje entrante del servidor
+        socket.on('response', function(response) {
+            console.log('Received response from server: ' + response);
+            // Aquí puedes hacer lo que quieras con la respuesta del servidor
+        });
+        
+        // Función para capturar una imagen del video y enviarla al servidor Flask
+        function captureImage(video) {
+            // Crear un canvas para capturar la imagen del video
+            let canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            let context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Convertir el canvas a un blob y enviarlo al servidor
+            canvas.toBlob(function(blob) {
+                let formData = new FormData();
+                formData.append('image', blob, 'frame.jpg');
+
+                fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.prediction) {
+                        document.getElementById('output').innerText = `Predicción: ${data.prediction}`;
+
+                        // Mostrar la predicción de las clases
+                        document.getElementById('class-prediction').innerText = `Clase: ${data.class_prediction}`;
+                    } else if (data.error) {
+                        console.log(data.error);
+                    }
+                })
+                .catch(error => {
+                    console.log('Error:', error);
+                });
+            }, 'image/jpeg');
+        }
+
+        // Asegurarse de que el navegador soporte getUserMedia
+        function hasGetUserMedia() {
+            return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        }
+
+        if (hasGetUserMedia()) {
+            // Accede a la cámara
+            navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                let video = document.getElementById('video');
+                video.srcObject = stream;
+
+                // Función para capturar y enviar el video al servidor
+                function captureAndSend() {
+                    // Crear un canvas para capturar la imagen del video
+                    let canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    let context = canvas.getContext('2d');
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    // Convertir el canvas a un blob y enviarlo al servidor
+                    canvas.toBlob(function(blob) {
+                        let formData = new FormData();
+                        formData.append('image', blob, 'frame.jpg');
+
+                        fetch('/predict', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.prediction) {
+                                document.getElementById('output').innerText = `Predicción: ${data.prediction}`;
+
+                                // Mostrar la predicción de las clases
+                                document.getElementById('class-prediction').innerText = `Clase: ${data.class_prediction}`;
+                            } else if (data.error) {
+                                console.log(data.error);
+                            }
+                        })
+                        .catch(error => {
+                            console.log('Error:', error);
+                        });
+                    }, 'image/jpeg');
+
+                    // Continuar capturando y enviando el video en tiempo real
+                    requestAnimationFrame(captureAndSend);
+                }
+
+                // Comenzar a capturar y enviar el video en tiempo real
+                captureAndSend();
+            })
+            .catch(function(error) {
+                console.log("Error al acceder a la cámara: ", error);
+            });
+        } else {
+            alert("getUserMedia() no es compatible con tu navegador");
+        }
+    </script>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</body>
+</html>
