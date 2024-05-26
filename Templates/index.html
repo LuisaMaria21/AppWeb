@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reconocedor de Cubiertos</title>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -39,6 +43,9 @@
             border-radius: 5px;
             background-color: #fff;
         }
+        .button-container {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -49,120 +56,72 @@
         <div class="row">
             <div class="video-container col-md-6">
                 <video id="video" width="640" height="480" autoplay></video>
+                <canvas id="canvas" hidden></canvas>
             </div>
             <div class="output-container col-md-4">
-                <div id="output" class="text-center">Predicción: </div>
-                <div id="class-prediction" class="text-center">Clase: </div>
+                <label>Predicción:</label>
+                <div id="output" class="text-center"></div>
+                <label>Clases:</label>
+                <div id="class-prediction" class="text-center"></div>
+                <div class="button-container">
+                    <button onclick="updatePrediction()" class="btn btn-primary">Actualizar Predicción</button>
+                </div>
+                <div id="confirmation" class="text-center" style="display: none;">Imagen recibida correctamente</div>
             </div>
         </div>
     </div>
+
     <script>
-        const socket = io();
-
-        // Manejar mensaje entrante del servidor
-        socket.on('response', function(response) {
-            console.log('Received response from server: ' + response);
-            // Aquí puedes hacer lo que quieras con la respuesta del servidor
-        });
-        
-        // Función para capturar una imagen del video y enviarla al servidor Flask
-        function captureImage(video) {
-            // Crear un canvas para capturar la imagen del video
-            let canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            let context = canvas.getContext('2d');
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Convertir el canvas a un blob y enviarlo al servidor
-            canvas.toBlob(function(blob) {
-                let formData = new FormData();
-                formData.append('image', blob, 'frame.jpg');
-
-                fetch('/predict', {
-                    method: 'POST',
-                    body: formData
-                })
+        function updatePrediction() {
+            fetch('/get_prediction')  // Realizar una solicitud al servidor Flask
                 .then(response => response.json())
                 .then(data => {
-                    if (data.prediction) {
-                        document.getElementById('output').innerText = `Predicción: ${data.prediction}`;
-
-                        // Mostrar la predicción de las clases
-                        document.getElementById('class-prediction').innerText = `Clase: ${data.class_prediction}`;
-                    } else if (data.error) {
-                        console.log(data.error);
-                    }
+                    // Actualizar los elementos HTML con las nuevas predicciones
+                    document.getElementById('output').innerText = 'Predicción: ' + data.prediccion;
+                    document.getElementById('class-prediction').innerText = 'Clases: ' + data.classes.join(', ');
+                    console.log('El servidor dice: ' + data);
+                    showConfirmation(); // Mostrar mensaje de confirmación
                 })
-                .catch(error => {
-                    console.log('Error:', error);
-                });
-            }, 'image/jpeg');
+                .catch(error => console.error('Error:', error));
         }
 
-        // Asegurarse de que el navegador soporte getUserMedia
-        function hasGetUserMedia() {
-            return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        function showConfirmation() {
+            document.getElementById('confirmation').style.display = 'block';
+            setTimeout(function() {
+                document.getElementById('confirmation').style.display = 'none';
+            }, 3000); // Ocultar el mensaje después de 3 segundos
         }
 
-        if (hasGetUserMedia()) {
-            // Accede a la cámara
-            navigator.mediaDevices.getUserMedia({ video: true })
-            .then(function(stream) {
-                let video = document.getElementById('video');
+        var socket = io.connect('http://127.0.0.1:5000');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        socket.on('connect', function () {
+            console.log('Conectado al servidor');
+        });
+
+        socket.on('message', function (data) {
+            document.getElementById('output').innerText = 'Predicción: ' + data.prediccion;
+            document.getElementById('class-prediction').innerText = 'Clases: ' + data.classes.join(', ');
+            console.log('El servidor dice: ' + data);
+            showConfirmation(); // Mostrar mensaje de confirmación
+        });
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then((stream) => {
                 video.srcObject = stream;
-
-                // Función para capturar y enviar el video al servidor
-                function captureAndSend() {
-                    // Crear un canvas para capturar la imagen del video
-                    let canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    let context = canvas.getContext('2d');
-                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                    // Convertir el canvas a un blob y enviarlo al servidor
-                    canvas.toBlob(function(blob) {
-                        let formData = new FormData();
-                        formData.append('image', blob, 'frame.jpg');
-
-                        fetch('/predict', {
-                            method: 'POST',
-                            body: formData
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.prediction) {
-                                document.getElementById('output').innerText = `Predicción: ${data.prediction}`;
-
-                                // Mostrar la predicción de las clases
-                                document.getElementById('class-prediction').innerText = `Clase: ${data.class_prediction}`;
-                            } else if (data.error) {
-                                console.log(data.error);
-                            }
-                        })
-                        .catch(error => {
-                            console.log('Error:', error);
-                        });
-                    }, 'image/jpeg');
-
-                    // Continuar capturando y enviando el video en tiempo real
-                    requestAnimationFrame(captureAndSend);
-                }
-
-                // Comenzar a capturar y enviar el video en tiempo real
-                captureAndSend();
             })
-            .catch(function(error) {
-                console.log("Error al acceder a la cámara: ", error);
+            .catch((error) => {
+                console.error('Error al acceder a la cámara:', error);
             });
-        } else {
-            alert("getUserMedia() no es compatible con tu navegador");
-        }
+
+        const FPS = 10;  // Ajustar la frecuencia de cuadros según sea necesario
+        setInterval(() => {
+            context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, 300, 150);
+            const dataURL = canvas.toDataURL('image/jpeg');
+            socket.emit('message', dataURL);
+        }, 1000 / FPS);
     </script>
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </body>
 </html>
